@@ -37,6 +37,61 @@ int mincosts[];
 		initrtpkt->mincost[i] = mincosts[i];
 }
 
+rtinit0()
+{
+
+}
+
+rtinit1()
+{
+
+}
+
+rtinit2()
+{
+
+}
+
+rtinit3()
+{
+
+}
+
+rtupdate0(pkt)
+struct rtpkt *pkt;
+{
+
+}
+
+rtupdate1(pkt)
+struct rtpkt *pkt;
+{
+
+}
+
+rtupdate2(pkt)
+struct rtpkt *pkt;
+{
+
+}
+
+rtupdate3(pkt)
+struct rtpkt *pkt;
+{
+
+}
+
+linkhandler0(linkid, newcost)
+int linkid, newcost;
+{
+
+}
+
+linkhandler1(linkid, newcost)
+int linkid, newcost;
+{
+
+}
 
 /*****************************************************************
 ***************** NETWORK EMULATION CODE STARTS BELOW ***********
@@ -150,7 +205,7 @@ init()                         /* initialize the simulator */
 		printf("It is likely that random number generation on your machine\n" );
 		printf("is different from what this emulator expects.  Please take\n");
 		printf("a look at the routine jimsrand() in the emulator code. Sorry. \n");
-		exit();
+		exit(0);
 	}
 
 	clocktime = 0.0;              /* initialize time to 0.0 */
@@ -183,7 +238,7 @@ init()                         /* initialize the simulator */
 /****************************************************************************/
 float jimsrand()
 {
-	double mmm = 2147483647;   /* largest int  - MACHINE DEPENDENT!!!!!!!!   */
+	double mmm = 32767;   /* largest int  - MACHINE DEPENDENT!!!!!!!!   */
 	float x;                   /* individual students may need to change mmm */
 	x = rand() / mmm;          /* x should be uniform in [0,1] */
 	return (x);

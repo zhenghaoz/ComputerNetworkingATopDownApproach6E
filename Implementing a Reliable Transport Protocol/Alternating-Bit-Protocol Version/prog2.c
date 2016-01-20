@@ -251,7 +251,7 @@ init()                         /* initialize the simulator */
 		printf("It is likely that random number generation on your machine\n" );
 		printf("is different from what this emulator expects.  Please take\n");
 		printf("a look at the routine jimsrand() in the emulator code. Sorry. \n");
-		exit();
+		exit(0);
 	}
 
 	ntolayer3 = 0;
@@ -269,7 +269,7 @@ init()                         /* initialize the simulator */
 /****************************************************************************/
 float jimsrand()
 {
-	double mmm = 2147483647;   /* largest int  - MACHINE DEPENDENT!!!!!!!!   */
+	double mmm = 32767;   	   /* largest int  - MACHINE DEPENDENT!!!!!!!!   */
 	float x;                   /* individual students may need to change mmm */
 	x = rand() / mmm;          /* x should be uniform in [0,1] */
 	return (x);
