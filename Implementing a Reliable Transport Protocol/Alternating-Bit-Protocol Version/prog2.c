@@ -36,8 +36,18 @@ struct pkt {
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
-
-
+/* Compute checksum */
+int compute_check_sum(data)
+char data[20];
+{
+	int sum = 0, i = 0;
+	for (i = 0; i < 20; i += 2) {
+		sum += (data[i] << 8) + data[i+1];
+		sum = (sum >> 16) + (sum & 0xffff);
+	}
+	sum = (~sum) & 0xffff;
+	return sum;
+}
 
 /* called from layer 5, passed the data to be sent to other side */
 A_output(message)
