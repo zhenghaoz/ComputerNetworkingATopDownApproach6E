@@ -37,61 +37,6 @@ int mincosts[];
 		initrtpkt->mincost[i] = mincosts[i];
 }
 
-rtinit0()
-{
-
-}
-
-rtinit1()
-{
-
-}
-
-rtinit2()
-{
-
-}
-
-rtinit3()
-{
-
-}
-
-rtupdate0(pkt)
-struct rtpkt *pkt;
-{
-
-}
-
-rtupdate1(pkt)
-struct rtpkt *pkt;
-{
-
-}
-
-rtupdate2(pkt)
-struct rtpkt *pkt;
-{
-
-}
-
-rtupdate3(pkt)
-struct rtpkt *pkt;
-{
-
-}
-
-linkhandler0(linkid, newcost)
-int linkid, newcost;
-{
-
-}
-
-linkhandler1(linkid, newcost)
-int linkid, newcost;
-{
-
-}
 
 /*****************************************************************
 ***************** NETWORK EMULATION CODE STARTS BELOW ***********
@@ -182,6 +127,10 @@ main()
 
 terminate:
 	printf("\nSimulator terminated at t=%f, no packets in medium\n", clocktime);
+/*	printdt0();
+	printdt1();
+	printdt2();
+	printdt3();*/
 }
 
 

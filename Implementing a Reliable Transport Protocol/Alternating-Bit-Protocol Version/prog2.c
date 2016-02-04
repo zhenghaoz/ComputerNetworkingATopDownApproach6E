@@ -53,7 +53,7 @@ char data[20];
 A_output(message)
 struct msg message;
 {
-
+	
 }
 
 B_output(message)  /* need be completed only for extra credit */
