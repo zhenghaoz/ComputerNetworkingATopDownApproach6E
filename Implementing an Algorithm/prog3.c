@@ -127,10 +127,6 @@ main()
 
 terminate:
 	printf("\nSimulator terminated at t=%f, no packets in medium\n", clocktime);
-/*	printdt0();
-	printdt1();
-	printdt2();
-	printdt3();*/
 }
 
 

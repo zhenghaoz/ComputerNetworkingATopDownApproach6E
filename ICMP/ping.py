@@ -41,13 +41,13 @@ def receiveOnePing(mySocket, ID, timeout, destAddr):
 			return "Request timed out."                  
 
 		timeReceived = time.time()                 
-		recPacket, addr = mySocket.recvfrom(1024)    
+		recPacket, addr = mySocket.recvfrom(1024)               
 
-        #Fill in start                  
-
-        #Fetch the ICMP header from the IP packet                  
-
-        #Fill in end                  
+        #Fetch the ICMP header from the IP packet               
+		icmpPacket = recPacket[20:]
+		icmpType, icmpCode, icmpChecksum, icmpID, icmpSeq, icmpTimestamp = struct.unpack('bbHHhd', icmpPacket)
+		if checksum(icmpPacket) == 0 and icmpType == 0 and icmpCode == 0 and icmpID == ID and icmpSeq == 1:
+			return time.time() - icmpTimestamp;
 
 		timeLeft = timeLeft - howLongInSelect         
 		if timeLeft <= 0:             
@@ -66,10 +66,10 @@ def sendOnePing(mySocket, destAddr, ID):
 
 	# Get the right checksum, and put in the header     
 	if sys.platform == 'darwin':         
-		myChecksum = socket.htons(myChecksum) & 0xffff       
+		myChecksum = htons(myChecksum) & 0xffff       
 		#Convert 16-bit integers from host to network byte order.     
 	else:         
-		myChecksum = socket.htons(myChecksum)              
+		myChecksum = htons(myChecksum)              
 
 	header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, myChecksum, ID, 1)     
 	packet = header + data  
@@ -82,8 +82,8 @@ def doOnePing(destAddr, timeout):
 	icmp = getprotobyname("icmp") 
     #SOCK_RAW is a powerful socket type. For more details see: http://sock-raw.org/papers/sock_raw  
 
-	mySocket = socket(AF_INET, SOCK_RAW) 
-	mySocket.bind(("eth0", 0))
+    #Create Socket here
+	mySocket = socket(AF_INET, SOCK_RAW, icmp) 
 
 	myID = os.getpid() & 0xFFFF  #Return the current process i     
 	sendOnePing(mySocket, destAddr, myID) 
@@ -104,4 +104,4 @@ def ping(host, timeout=1):
 		time.sleep(1)# one second     
 	return delay  
 
-ping("127.0.0.1") 
+ping("183.136.217.66") 
