@@ -36,17 +36,20 @@ struct pkt {
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
-#define TIME_OUT 5000.0
+#define TIME_OUT 24.0
+#define DEBUG 1
 
 int seq_expect_send;	/* Next sequence number of A */
 int seq_expect_recv;	/* Next sequence number of B */
-int waiting;			/* Whether side A is waiting */
-struct pkt packet_expect_send;	/* Packet hold in A */
+int is_waiting;			/* Whether side A is waiting */
+struct pkt waiting_packet;	/* Packet hold in A */
 
 /* Print payload */
-print_pkt(packet)
+print_pkt(action, packet)
+char *action;
 struct pkt packet;
 {
+	printf("%s:\t", action);
 	printf("seq = %d, ack = %d, checksum = %x, ", packet.seqnum, packet.acknum, packet.checksum);
 	int i;
 	for (i = 0; i < 20; i++)
@@ -76,19 +79,19 @@ A_output(message)
 struct msg message;
 {
 	/* If A is waiting, ignore the message */
-	if (waiting)
+	if (is_waiting)
 		return;
 	/* Send packet to B side */
-	memcpy(packet_expect_send.payload, message.data, sizeof(message.data));
-	packet_expect_send.seqnum = seq_expect_send;
-	packet_expect_send.checksum = 0;
-	packet_expect_send.checksum = compute_check_sum(packet_expect_send);
-	tolayer3(0, packet_expect_send);
+	memcpy(waiting_packet.payload, message.data, sizeof(message.data));
+	waiting_packet.seqnum = seq_expect_send;
+	waiting_packet.checksum = 0;
+	waiting_packet.checksum = compute_check_sum(waiting_packet);
+	tolayer3(0, waiting_packet);
 	starttimer(0, TIME_OUT);
-	waiting = 1;
+	is_waiting = 1;
 	/* Debug output */
-	printf("Sent data package: ");
-	print_pkt(packet_expect_send);
+	if (DEBUG)
+		print_pkt("Sent", waiting_packet);
 }
 
 B_output(message)  /* need be completed only for extra credit */
@@ -101,29 +104,21 @@ struct msg message;
 A_input(packet)
 struct pkt packet;
 {
-	if (waiting)
-		stoptimer(0);
-	if (packet.acknum == seq_expect_send) {	/* Success */
+	stoptimer(0);
+	if (packet.acknum == seq_expect_send) {	/* ACK */
 		seq_expect_send = 1 - seq_expect_send;
-		waiting = 0;
-	} else {								/* Failed, send it again */
-		tolayer3(0, packet_expect_send);
+		is_waiting = 0;
+	} else if (packet.acknum == -1) {		/* NAK */
+		tolayer3(0, waiting_packet);
 		starttimer(0, TIME_OUT);
-		printf("Sent data again: ");
-		print_pkt(packet_expect_send);
 	}
 }
 
 /* called when A's timer goes off */
 A_timerinterrupt()
 {
-/*	if (waiting) {
-		tolayer3(0, packet_expect_send);
-		starttimer(0, TIME_OUT);
-		printf("Sent data again: ");
-		print_pkt(packet_expect_send);
-	}*/
-		printf("Time out\n");
+	tolayer3(0, waiting_packet);
+	starttimer(0, TIME_OUT);
 } 
 
 /* the following routine will be called once (only) before any other */
@@ -131,7 +126,7 @@ A_timerinterrupt()
 A_init()
 {
 	seq_expect_send = 0;
-	waiting = 0;
+	is_waiting = 0;
 }
 
 
@@ -141,28 +136,27 @@ A_init()
 B_input(packet)
 struct pkt packet;
 {
-	/* Discard duplicate packet */
-	if (packet.seqnum != seq_expect_recv)
-		return;
-	/* If corruption occurs, send NAK */
-	if (compute_check_sum(packet)) {
-		struct pkt nakpkt;
-		nakpkt.acknum = -1;
-		tolayer3(1, nakpkt);
-		return;
+	if (packet.seqnum == seq_expect_recv) {
+		/* If corruption occurs, send NAK */
+		if (compute_check_sum(packet)) {
+			struct pkt nakpkt;
+			nakpkt.acknum = -1;
+			tolayer3(1, nakpkt);
+			return;
+		}
+		/* Pass data to layer5 */
+		struct msg message;
+		memcpy(message.data, packet.payload, sizeof(packet.payload));
+		tolayer5(1, message);
+		seq_expect_recv = 1 - seq_expect_recv;
+		/* Debug output */
+		if (DEBUG)
+			print_pkt("Accpeted", packet);
 	}
 	/* Send ACK to A side */
 	struct pkt ackpkt;
 	ackpkt.acknum = packet.seqnum;
 	tolayer3(1, ackpkt);
-	/* Pass data to layer5 */
-	struct msg message;
-	memcpy(message.data, packet.payload, sizeof(packet.payload));
-	tolayer5(1, message);
-	seq_expect_recv = 1 - seq_expect_recv;
-	/* Debug output */
-	printf("Accepted data package: ");
-	print_pkt(packet);
 }
 
 /* called when B's timer goes off */
