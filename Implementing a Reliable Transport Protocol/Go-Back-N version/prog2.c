@@ -36,24 +36,76 @@ struct pkt {
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
-/* Compute checksum */
-int compute_check_sum(data)
-char data[20];
+#define MAX_SEQ 7
+#define MAX_WINDOW (MAX_SEQ+1)
+#define MAX_BUF 50
+int A_expect_ack;
+int A_expect_send;
+int A_packet_in_buffer;			/* the number of packets in buffer */
+int A_queue_head;
+int A_queue_tail;
+msg A_queue_buffer[MAX_BUF];
+pkt A_window_buffer[MAX_WINDOW];
+
+/* check if queue is empty */
+#define empty() (A_queue_head == A_queue_tail)
+
+/* put msg in queue */
+push()
+{
+
+}
+
+/* get msg in queue */
+msg pop()
+{
+
+}
+
+/* compute checksum */
+int compute_check_sum(packet)
+struct pkt packet;
 {
 	int sum = 0, i = 0;
+	sum = packet.checksum;
+	sum += packet.seqnum;
+	sum += packet.acknum;
+	sum = (sum >> 16) + (sum & 0xffff);
 	for (i = 0; i < 20; i += 2) {
-		sum += (data[i] << 8) + data[i+1];
+		sum += (packet.payload[i] << 8) + packet.payload[i+1];
 		sum = (sum >> 16) + (sum & 0xffff);
 	}
 	sum = (~sum) & 0xffff;
 	return sum;
 }
 
+/* check if a <= b < c circularly */
+int between(a, b, c)
+int a, b, c;
+{
+	if ((a <= b && b < c)
+		|| (c < a && a <= b)
+		|| (b < c && c < a))
+		return 1;
+	else
+		return 0;
+}
+
 /* called from layer 5, passed the data to be sent to other side */
 A_output(message)
 struct msg message;
 {
-
+	/* check if msg is in the window */
+	if (A_packet_in_buffer == MAX_WINDOW) 
+		return;
+	/* construct a packet */
+	struct pkt packet;
+	memcpy(packet, message.data, sizeof(message.data));
+	packet.seqnum = A_expect_send;
+	packet.checksum = 0;
+	packet.checksum = checksum(packet); 
+	A_window_buffer[A_expect_send] = packet;
+	tolayer3(0, packet);
 }
 
 B_output(message)  /* need be completed only for extra credit */
@@ -79,8 +131,12 @@ A_timerinterrupt()
 /* entity A routines are called. You can use it to do any initialization */
 A_init()
 {
+	A_packet_in_buffer = 0;
+	A_expect_send = 0;
+	A_expect_ack = -1;
+	A_queue_head = 0;
+	A_queue_tail = 0;
 }
-
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 
@@ -88,6 +144,7 @@ A_init()
 B_input(packet)
 struct pkt packet;
 {
+
 }
 
 /* called when B's timer goes off */
@@ -99,6 +156,7 @@ B_timerinterrupt()
 /* entity B routines are called. You can use it to do any initialization */
 B_init()
 {
+	
 }
 
 
