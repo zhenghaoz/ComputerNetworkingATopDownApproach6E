@@ -36,16 +36,70 @@ struct pkt {
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
+#define DEBUG 1
 #define MAX_SEQ 7
 #define MAX_WINDOW (MAX_SEQ+1)
 #define MAX_BUF 50
+#define TIME_OUT 13.0
+#define INC(a) ((a+1)%MAX_WINDOW)
 int A_expect_ack;
 int A_expect_send;
 int A_packet_in_buffer;			/* the number of packets in buffer */
 int A_queue_head;
 int A_queue_tail;
-msg A_queue_buffer[MAX_BUF];
-pkt A_window_buffer[MAX_WINDOW];
+struct msg A_queue_buffer[MAX_BUF];
+struct pkt A_window_buffer[MAX_WINDOW];
+
+/* multitimer: start a timer for each packet using one timer */
+float timers_expire[MAX_WINDOW];
+int timers_running = 0;
+int timers_head = 0;
+int timers_tail = 0;
+float time = 0.0;
+
+/* call this function after the first timer goes off or was be closed */
+update_multitimer()
+{
+	timers_running = 0;
+	/* if there is more timer, run it right now */
+	if (timers_head != timers_tail) {
+		timers_running = 1;
+		float increment = timers_expire[timers_head] - time;
+		timers_head = INC(timers_head);
+		starttimer(0, increment);
+	}
+}
+
+/* start a timer for a packet */
+start_multitimer()
+{
+	/* error check */
+	if (timers_head == timers_tail+1) {
+		printf("Warning: you can't create more than %d timers.\n", MAX_WINDOW);
+		return;
+	}
+	if (timers_running == 0) {	/* if timers isn't running, start the timer right now */
+		timers_running = 1;
+		starttimer(0, TIME_OUT);
+	} else {					/* else, add this timer into the queue */
+		timers_expire[timers_tail] = time + TIME_OUT;
+		timers_tail = INC(timers_tail);
+	}
+}
+
+/* stop the first timer */
+stop_multitimer()
+{
+	/* error check */
+	if (timers_running == 0) {
+		printf("Warning: you are trying to stop a timer didn't exist.\n");
+		return;
+	}
+	/* stop the first timer */
+	stoptimer(0);
+	/* update the first timer */
+	update_multitimer();
+}
 
 /* check if queue is empty */
 #define empty() (A_queue_head == A_queue_tail)
@@ -57,7 +111,7 @@ push()
 }
 
 /* get msg in queue */
-msg pop()
+struct msg pop()
 {
 
 }
@@ -95,17 +149,25 @@ int a, b, c;
 A_output(message)
 struct msg message;
 {
-	/* check if msg is in the window */
+/*	check if msg is in the window
 	if (A_packet_in_buffer == MAX_WINDOW) 
 		return;
-	/* construct a packet */
+	construct a packet
 	struct pkt packet;
-	memcpy(packet, message.data, sizeof(message.data));
+	memcpy(packet.payload, message.data, sizeof(message.data));
 	packet.seqnum = A_expect_send;
 	packet.checksum = 0;
-	packet.checksum = checksum(packet); 
+	packet.checksum = compute_check_sum(packet); 
 	A_window_buffer[A_expect_send] = packet;
-	tolayer3(0, packet);
+	tolayer3(0, packet);  */
+	if (A_packet_in_buffer < MAX_WINDOW) {
+		printf("starttimer at %f\n", time);
+		if (A_packet_in_buffer == 3) {
+			stop_multitimer();
+		}
+		start_multitimer();
+		A_packet_in_buffer++;
+	}
 }
 
 B_output(message)  /* need be completed only for extra credit */
@@ -124,7 +186,9 @@ struct pkt packet;
 /* called when A's timer goes off */
 A_timerinterrupt()
 {
-
+	/* multitimer test */
+	update_multitimer();
+	printf("timerinterrupt at %f\n", time);
 }
 
 /* the following routine will be called once (only) before any other */
@@ -201,7 +265,7 @@ struct event *evlist = NULL;   /* the event list */
 int TRACE = 1;             /* for my debugging */
 int nsim = 0;              /* number of messages from 5 to 4 so far */
 int nsimmax = 0;           /* number of msgs to generate, then stop */
-float time = 0.000;
+/*float time = 0.000;*/
 float lossprob;            /* probability that a packet is dropped  */
 float corruptprob;         /* probability that one bit is packet is flipped */
 float lambda;              /* arrival rate of messages from layer 5 */
