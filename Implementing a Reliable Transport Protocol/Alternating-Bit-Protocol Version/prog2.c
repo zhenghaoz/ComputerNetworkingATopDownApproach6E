@@ -49,7 +49,7 @@ print_pkt(action, packet)
 char *action;
 struct pkt packet;
 {
-	printf("%s:\t", action);
+	printf("%s: ", action);
 	printf("seq = %d, ack = %d, checksum = %x, ", packet.seqnum, packet.acknum, packet.checksum);
 	int i;
 	for (i = 0; i < 20; i++)
