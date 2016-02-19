@@ -40,7 +40,7 @@ struct pkt {
 #define MAX_SEQ 7
 #define MAX_WINDOW (MAX_SEQ+1)
 #define MAX_BUF 50
-#define TIME_OUT 24.0
+#define TIME_OUT 16.0
 #define INC(a) ((a+1)%MAX_WINDOW)
 int expect_ack;
 int expect_send;
@@ -223,16 +223,16 @@ struct pkt packet;
 			stop_multitimer();
 			tolayer3(0, window_buffer[seqnum]);
 			start_multitimer();
-			if (DEBUG)
-				print_packet("NAK retransmit", window_buffer[seqnum]);
+/*			if (DEBUG)
+				print_packet("NAK retransmit", window_buffer[seqnum]);*/
 		}
 	} else {					/* Recieved ACK, remove data in window */
 		while (between(expect_ack, packet.acknum, expect_send)) {
 			expect_ack = INC(expect_ack);
 			packet_in_buffer--;
 			stop_multitimer();
-			if (DEBUG)
-				print_packet("Acknowledged", packet);
+/*			if (DEBUG)
+				print_packet("Acknowledged", packet);*/
 		}
 		/* add new packet from queue */
 		while (packet_in_buffer < MAX_WINDOW && !empty()) {
@@ -284,8 +284,8 @@ A_init()
 B_input(packet)
 struct pkt packet;
 {
-	if (DEBUG)
-		print_packet("Recieved", packet);
+/*	if (DEBUG)
+		print_packet("Recieved", packet);*/
 	if (expect_recv == packet.seqnum) {
 		/* if packet is conrrupted, send back NAK */
 		if (compute_check_sum(packet)) {
