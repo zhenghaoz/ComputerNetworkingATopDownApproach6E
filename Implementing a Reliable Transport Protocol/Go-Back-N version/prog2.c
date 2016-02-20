@@ -40,7 +40,7 @@ struct pkt {
 #define MAX_SEQ 7
 #define MAX_WINDOW (MAX_SEQ+1)
 #define MAX_BUF 50
-#define TIME_OUT 8.0
+#define TIME_OUT 16.0
 #define INC(a) ((a+1)%MAX_WINDOW)
 int expect_ack;
 int expect_send;
@@ -223,40 +223,30 @@ struct msg message;
 A_input(packet)
 struct pkt packet;
 {
-	if (packet.acknum < 0) {	/* Recieved NAK, send data in window again */
-		int seqnum = -packet.acknum;
-		for (; seqnum != expect_send; seqnum = INC(seqnum)) {
-			stop_multitimer(seqnum);
-			tolayer3(0, window_buffer[seqnum]);
-			start_multitimer(seqnum);
-/*			if (DEBUG)
-				print_packet("NAK retransmit", window_buffer[seqnum]);*/
-		}
-	} else {					/* Recieved ACK, remove data in window */
-		while (between(expect_ack, packet.acknum, expect_send)) {
-			expect_ack = INC(expect_ack);
-			packet_in_buffer--;
-			stop_multitimer(expect_ack);
-/*			if (DEBUG)
-				print_packet("Acknowledged", packet);*/
-		}
-		/* add new packet from queue */
-		while (packet_in_buffer < MAX_WINDOW && !empty()) {
-			struct msg message = pop();
-			struct pkt packet;
-			memcpy(packet.payload, message.data, sizeof(message.data));
-			packet.seqnum = expect_send;
-			packet.checksum = 0;
-			packet.checksum = compute_check_sum(packet);
-			window_buffer[expect_send] = packet;
-			expect_send = INC(expect_send);
-			packet_in_buffer++;
-			tolayer3(0, packet);
-			start_multitimer(packet.seqnum);
-			/* debug output */
-			if (DEBUG)
-				print_packet("Send", packet);
-		}
+	/* Recieved ACK, remove data in window */
+	while (between(expect_ack, packet.acknum, expect_send)) {
+		expect_ack = INC(expect_ack);
+		packet_in_buffer--;
+		stop_multitimer(expect_ack);
+/*		if (DEBUG)
+			print_packet("Acknowledged", packet);*/
+	}
+	/* add new packet from queue */
+	while (packet_in_buffer < MAX_WINDOW && !empty()) {
+		struct msg message = pop();
+		struct pkt packet;
+		memcpy(packet.payload, message.data, sizeof(message.data));
+		packet.seqnum = expect_send;
+		packet.checksum = 0;
+		packet.checksum = compute_check_sum(packet);
+		window_buffer[expect_send] = packet;
+		expect_send = INC(expect_send);
+		packet_in_buffer++;
+		tolayer3(0, packet);
+		start_multitimer(packet.seqnum);
+		/* debug output */
+		if (DEBUG)
+			print_packet("Send", packet);
 	}
 }
 
@@ -293,13 +283,9 @@ struct pkt packet;
 /*	if (DEBUG)
 		print_packet("Recieved", packet);*/
 	if (expect_recv == packet.seqnum) {
-		/* if packet is conrrupted, send back NAK */
-		if (compute_check_sum(packet)) {
-			struct pkt nakpkt;
-			nakpkt.acknum = -packet.seqnum;
-			tolayer3(1, nakpkt);
+		/* if packet is conrrupted, do nothing */
+		if (compute_check_sum(packet))
 			return;
-		}
 		/* pass data to layer3 */
 		struct msg message;
 		memcpy(message.data, packet.payload, sizeof(packet.payload));
