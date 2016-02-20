@@ -37,16 +37,18 @@ struct pkt {
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
 #define DEBUG 1
+#define NODE 2
 #define MAX_SEQ 7
 #define MAX_WINDOW (MAX_SEQ+1)
 #define MAX_BUF 50
 #define TIME_OUT 16.0
 #define INC(a) ((a+1)%MAX_WINDOW)
-int expect_ack;
-int expect_send;
-int packet_in_buffer;			/* the number of packets in buffer */
-int expect_recv;
-struct pkt window_buffer[MAX_WINDOW];
+
+int expect_ack[NODE];
+int expect_send[NODE];
+int packet_in_buffer[NODE];			
+int expect_recv[NODE];
+struct pkt window_buffer[NODE][MAX_WINDOW];
 
 /* print packet content */
 print_packet(action, packet)
@@ -94,58 +96,59 @@ int a, b, c;
 /* multitimer: 
  * start a timer for each packet using one timer 
  */
-float timers_expire[MAX_WINDOW];
-int timers_seqs[MAX_WINDOW];
-int timers_seq = 0;
-int timers_running = 0;
-int timers_head = 0;
-int timers_tail = 0;
+float timers_expire[NODE][MAX_WINDOW];
+int timers_seqs[NODE][MAX_WINDOW];
+int timers_seq[NODE] = {0, 0};
+int timers_running[NODE] = {0, 0};
+int timers_head[NODE] = {0, 0};
+int timers_tail[NODE] = {0, 0};
 float time = 0.0;
 
 /* call this function after the first timer goes off or was be closed */
-interrupt_multitimer()
+interrupt_multitimer(AorB)
+int AorB;
 {
-	timers_running = 0;
+	timers_running[AorB] = 0;
 }
 
 /* start a timer for a packet */
-start_multitimer(seqnum)
-int seqnum;
+start_multitimer(AorB, seqnum)
+int AorB, seqnum;
 {
 	/* bound check */
-	if (timers_head == timers_tail+1) {
+	if (timers_head[AorB] == timers_tail[AorB] + 1) {
 		printf("Warning: you can't create more than %d timers.\n", MAX_WINDOW);
 		return;
 	}
-	if (timers_running == 0) {	/* if timers isn't running, start the timer right now */
-		timers_running = 1;
-		timers_seq = seqnum;
+	if (timers_running[AorB] == 0) {	/* if timers isn't running, start the timer right now */
+		timers_running[AorB] = 1;
+		timers_seq[AorB] = seqnum;
 		starttimer(0, TIME_OUT);
 	} else {					/* else, add this timer into the queue */
-		timers_expire[timers_tail] = time + TIME_OUT;
-		timers_seqs[timers_tail] = seqnum;
-		timers_tail = INC(timers_tail);
+		timers_expire[AorB][timers_tail[AorB]] = time + TIME_OUT;
+		timers_seqs[AorB][timers_tail[AorB]] = seqnum;
+		timers_tail[AorB] = INC(timers_tail[AorB]);
 	}
 }
 
 /* stop the first timer */
-stop_multitimer(seqnum)
-int seqnum;
+stop_multitimer(AorB, seqnum)
+int AorB, seqnum;
 {
 	/* bound check */
-	if (timers_running == 0 && seqnum != timers_seq) {
+	if (timers_running[AorB] == 0 && seqnum != timers_seq[AorB]) {
 		printf("Warning: you are trying to stop a timer isn't running.\n");
 		return;
 	}
 	/* stop the first timer */
 	stoptimer(0);
-	timers_running = 0;
+	timers_running[AorB] = 0;
 	/* if there is more timer, run it right now */
-	if (timers_head != timers_tail) {
-		timers_running = 1;
-		float increment = timers_expire[timers_head] - time;
-		timers_seq = timers_seqs[timers_head];
-		timers_head = INC(timers_head);
+	if (timers_head[AorB] != timers_tail[AorB]) {
+		timers_running[AorB] = 1;
+		float increment = timers_expire[AorB][timers_head[AorB]] - time;
+		timers_seq[AorB] = timers_seqs[AorB][timers_head[AorB]];
+		timers_head[AorB] = INC(timers_head[AorB]);
 		starttimer(0, increment);
 	}
 }
@@ -154,15 +157,16 @@ int seqnum;
 /* queue:
  * when message is out of the sender's window, put the messge in queue
  */
-int queue_head = 0;
-int queue_tail = 0;
-struct msg queue_buffer[MAX_BUF];
+int queue_head[NODE] = {0, 0};
+int queue_tail[NODE] = {0, 0};
+struct msg queue_buffer[NODE][MAX_BUF];
 
 /* check if queue is empty */
-#define empty() (queue_head == queue_tail)
+#define empty(AorB) (queue_head[AorB] == queue_tail[AorB])
 
 /* put message in queue */
-push(message)
+push(AorB, message)
+int AorB;
 struct msg message;
 {
 	/* bound check */
@@ -170,20 +174,21 @@ struct msg message;
 		printf("Warning: there is no avaliable space in queue.\n");
 		return;
 	}
-	queue_buffer[queue_tail] = message;
-	queue_tail = INC(queue_tail);
+	queue_buffer[AorB][queue_tail[AorB]] = message;
+	queue_tail[AorB] = INC(queue_tail[AorB]);
 }
 
 /* get messsage out of queue */
-struct msg pop()
+struct msg pop(AorB)
+int AorB;
 {
 	/* bound check */
-	if (empty()) {
+	if (empty(AorB)) {
 		printf("Warning: no packet in queue.\n");
 		return;
 	}
-	struct msg message = queue_buffer[queue_head];
-	queue_head = INC(queue_head);
+	struct msg message = queue_buffer[AorB][queue_head[AorB]];
+	queue_head[AorB] = INC(queue_head[AorB]);
 	return message;
 }
 
@@ -193,23 +198,23 @@ A_output(message)
 struct msg message;
 {
 	/* check if msg is in the window */
-	if (packet_in_buffer < MAX_WINDOW) {
+	if (packet_in_buffer[0] < MAX_WINDOW) {
 		/* construct a packet */
 		struct pkt packet;
 		memcpy(packet.payload, message.data, sizeof(message.data));
-		packet.seqnum = expect_send;
+		packet.seqnum = expect_send[0];
 		packet.checksum = 0;
 		packet.checksum = compute_check_sum(packet); 
-		window_buffer[expect_send] = packet;
-		expect_send = INC(expect_send);
-		packet_in_buffer++;
+		window_buffer[0][expect_send[0]] = packet;
+		expect_send[0] = INC(expect_send[0]);
+		packet_in_buffer[0]++;
 		tolayer3(0, packet);  
-		start_multitimer(packet.seqnum);
+		start_multitimer(0, packet.seqnum);
 		/* debug output */
 		if (DEBUG)
 			print_packet("Send", packet);
 	} else {
-		push(message);
+		push(0, message);
 	}
 }
 
@@ -224,26 +229,26 @@ A_input(packet)
 struct pkt packet;
 {
 	/* Recieved ACK, remove data in window */
-	while (between(expect_ack, packet.acknum, expect_send)) {
-		expect_ack = INC(expect_ack);
-		packet_in_buffer--;
-		stop_multitimer(expect_ack);
+	while (between(expect_ack[0], packet.acknum, expect_send[0])) {
+		expect_ack[0] = INC(expect_ack[0]);
+		packet_in_buffer[0]--;
+		stop_multitimer(0, expect_ack[0]);
 /*		if (DEBUG)
 			print_packet("Acknowledged", packet);*/
 	}
 	/* add new packet from queue */
-	while (packet_in_buffer < MAX_WINDOW && !empty()) {
-		struct msg message = pop();
+	while (packet_in_buffer[0] < MAX_WINDOW && !empty(0)) {
+		struct msg message = pop(0);
 		struct pkt packet;
 		memcpy(packet.payload, message.data, sizeof(message.data));
-		packet.seqnum = expect_send;
+		packet.seqnum = expect_send[0];
 		packet.checksum = 0;
 		packet.checksum = compute_check_sum(packet);
-		window_buffer[expect_send] = packet;
-		expect_send = INC(expect_send);
-		packet_in_buffer++;
+		window_buffer[0][expect_send[0]] = packet;
+		expect_send[0] = INC(expect_send[0]);
+		packet_in_buffer[0]++;
 		tolayer3(0, packet);
-		start_multitimer(packet.seqnum);
+		start_multitimer(0, packet.seqnum);
 		/* debug output */
 		if (DEBUG)
 			print_packet("Send", packet);
@@ -253,15 +258,15 @@ struct pkt packet;
 /* called when A's timer goes off */
 A_timerinterrupt()
 {
-	interrupt_multitimer();
+	interrupt_multitimer(0);
 	int seqnum;
-	for (seqnum = expect_ack; seqnum != expect_send; seqnum = INC(seqnum)) {
-		if (seqnum != expect_ack)
-			stop_multitimer(seqnum);
-		tolayer3(0, window_buffer[seqnum]);
-		start_multitimer(seqnum);
+	for (seqnum = expect_ack[0]; seqnum != expect_send[0]; seqnum = INC(seqnum)) {
+		if (seqnum != expect_ack[0])
+			stop_multitimer(0, seqnum);
+		tolayer3(0, window_buffer[0][seqnum]);
+		start_multitimer(0, seqnum);
 		if (DEBUG)
-			print_packet("Timeout retransmit", window_buffer[seqnum]);
+			print_packet("Timeout retransmit", window_buffer[0][seqnum]);
 	}
 }
 
@@ -269,9 +274,10 @@ A_timerinterrupt()
 /* entity A routines are called. You can use it to do any initialization */
 A_init()
 {
-	packet_in_buffer = 0;
-	expect_send = 0;
-	expect_ack = 0;
+	packet_in_buffer[0] = 0;
+	expect_send[0] = 0;
+	expect_ack[0] = 0;
+	expect_recv[0] = 0;
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
@@ -282,7 +288,7 @@ struct pkt packet;
 {
 /*	if (DEBUG)
 		print_packet("Recieved", packet);*/
-	if (expect_recv == packet.seqnum) {
+	if (expect_recv[1] == packet.seqnum) {
 		/* if packet is conrrupted, do nothing */
 		if (compute_check_sum(packet))
 			return;
@@ -290,7 +296,7 @@ struct pkt packet;
 		struct msg message;
 		memcpy(message.data, packet.payload, sizeof(packet.payload));
 		tolayer5(1, message);
-		expect_recv = INC(expect_recv);
+		expect_recv[1] = INC(expect_recv[1]);
 		/* ACK */
 		struct pkt ackpkt;
 		ackpkt.acknum = packet.seqnum;
@@ -311,7 +317,10 @@ B_timerinterrupt()
 /* entity B routines are called. You can use it to do any initialization */
 B_init()
 {
-	expect_recv = 0;
+	packet_in_buffer[1] = 0;
+	expect_send[1] = 0;
+	expect_ack[1] = 0;
+	expect_recv[1] = 0;
 }
 
 
