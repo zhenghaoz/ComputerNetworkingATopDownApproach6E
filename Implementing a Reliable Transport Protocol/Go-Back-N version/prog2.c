@@ -40,7 +40,7 @@ struct pkt {
 #define MAX_SEQ 7
 #define MAX_WINDOW (MAX_SEQ+1)
 #define MAX_BUF 50
-#define TIME_OUT 16.0
+#define TIME_OUT 8.0
 #define INC(a) ((a+1)%MAX_WINDOW)
 int expect_ack;
 int expect_send;
@@ -95,26 +95,22 @@ int a, b, c;
  * start a timer for each packet using one timer 
  */
 float timers_expire[MAX_WINDOW];
+int timers_seqs[MAX_WINDOW];
+int timers_seq = 0;
 int timers_running = 0;
 int timers_head = 0;
 int timers_tail = 0;
 float time = 0.0;
 
 /* call this function after the first timer goes off or was be closed */
-update_multitimer()
+interrupt_multitimer()
 {
 	timers_running = 0;
-	/* if there is more timer, run it right now */
-	if (timers_head != timers_tail) {
-		timers_running = 1;
-		float increment = timers_expire[timers_head] - time;
-		timers_head = INC(timers_head);
-		starttimer(0, increment);
-	}
 }
 
 /* start a timer for a packet */
-start_multitimer()
+start_multitimer(seqnum)
+int seqnum;
 {
 	/* bound check */
 	if (timers_head == timers_tail+1) {
@@ -123,25 +119,35 @@ start_multitimer()
 	}
 	if (timers_running == 0) {	/* if timers isn't running, start the timer right now */
 		timers_running = 1;
+		timers_seq = seqnum;
 		starttimer(0, TIME_OUT);
 	} else {					/* else, add this timer into the queue */
 		timers_expire[timers_tail] = time + TIME_OUT;
+		timers_seqs[timers_tail] = seqnum;
 		timers_tail = INC(timers_tail);
 	}
 }
 
 /* stop the first timer */
-stop_multitimer()
+stop_multitimer(seqnum)
+int seqnum;
 {
 	/* bound check */
-	if (timers_running == 0) {
-		printf("Warning: you are trying to stop a timer didn't exist.\n");
+	if (timers_running == 0 && seqnum != timers_seq) {
+		printf("Warning: you are trying to stop a timer isn't running.\n");
 		return;
 	}
 	/* stop the first timer */
 	stoptimer(0);
-	/* update the first timer */
-	update_multitimer();
+	timers_running = 0;
+	/* if there is more timer, run it right now */
+	if (timers_head != timers_tail) {
+		timers_running = 1;
+		float increment = timers_expire[timers_head] - time;
+		timers_seq = timers_seqs[timers_head];
+		timers_head = INC(timers_head);
+		starttimer(0, increment);
+	}
 }
 
 
@@ -198,7 +204,7 @@ struct msg message;
 		expect_send = INC(expect_send);
 		packet_in_buffer++;
 		tolayer3(0, packet);  
-		start_multitimer();
+		start_multitimer(packet.seqnum);
 		/* debug output */
 		if (DEBUG)
 			print_packet("Send", packet);
@@ -220,9 +226,9 @@ struct pkt packet;
 	if (packet.acknum < 0) {	/* Recieved NAK, send data in window again */
 		int seqnum = -packet.acknum;
 		for (; seqnum != expect_send; seqnum = INC(seqnum)) {
-			stop_multitimer();
+			stop_multitimer(seqnum);
 			tolayer3(0, window_buffer[seqnum]);
-			start_multitimer();
+			start_multitimer(seqnum);
 /*			if (DEBUG)
 				print_packet("NAK retransmit", window_buffer[seqnum]);*/
 		}
@@ -230,7 +236,7 @@ struct pkt packet;
 		while (between(expect_ack, packet.acknum, expect_send)) {
 			expect_ack = INC(expect_ack);
 			packet_in_buffer--;
-			stop_multitimer();
+			stop_multitimer(expect_ack);
 /*			if (DEBUG)
 				print_packet("Acknowledged", packet);*/
 		}
@@ -246,7 +252,7 @@ struct pkt packet;
 			expect_send = INC(expect_send);
 			packet_in_buffer++;
 			tolayer3(0, packet);
-			start_multitimer();
+			start_multitimer(packet.seqnum);
 			/* debug output */
 			if (DEBUG)
 				print_packet("Send", packet);
@@ -257,13 +263,13 @@ struct pkt packet;
 /* called when A's timer goes off */
 A_timerinterrupt()
 {
-	/* multitimer test */
-	update_multitimer();
+	interrupt_multitimer();
 	int seqnum;
 	for (seqnum = expect_ack; seqnum != expect_send; seqnum = INC(seqnum)) {
-		stop_multitimer();
+		if (seqnum != expect_ack)
+			stop_multitimer(seqnum);
 		tolayer3(0, window_buffer[seqnum]);
-		start_multitimer();
+		start_multitimer(seqnum);
 		if (DEBUG)
 			print_packet("Timeout retransmit", window_buffer[seqnum]);
 	}
