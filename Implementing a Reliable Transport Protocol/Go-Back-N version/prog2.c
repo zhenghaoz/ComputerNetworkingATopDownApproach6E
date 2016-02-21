@@ -37,7 +37,7 @@ struct pkt {
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
 #define DEBUG 1
-#define NODE 2
+#define POINT 2
 #define MAX_SEQ 7
 #define MAX_WINDOW (MAX_SEQ+1)
 #define MAX_BUF 50
@@ -45,11 +45,11 @@ struct pkt {
 #define INC(a) ((a+1)%MAX_WINDOW)
 #define DEC(a) ((a+MAX_WINDOW-1)%MAX_WINDOW)
 
-int expect_ack[NODE];
-int expect_send[NODE];
-int packet_in_buffer[NODE];			
-int expect_recv[NODE];
-struct pkt window_buffer[NODE][MAX_WINDOW];
+int expect_ack[POINT];
+int expect_send[POINT];
+int packet_in_buffer[POINT];			
+int expect_recv[POINT];
+struct pkt window_buffer[POINT][MAX_WINDOW];
 
 /* print packet content */
 print_packet(AorB, action, packet)
@@ -115,12 +115,12 @@ struct msg message;
 /* multitimer: 
  * start a timer for each packet using one timer 
  */
-float timers_expire[NODE][MAX_WINDOW];
-int timers_seqs[NODE][MAX_WINDOW];
-int timers_seq[NODE] = {0, 0};
-int timers_running[NODE] = {0, 0};
-int timers_head[NODE] = {0, 0};
-int timers_tail[NODE] = {0, 0};
+float timers_expire[POINT][MAX_WINDOW];
+int timers_seqs[POINT][MAX_WINDOW];
+int timers_seq[POINT] = {0, 0};
+int timers_running[POINT] = {0, 0};
+int timers_head[POINT] = {0, 0};
+int timers_tail[POINT] = {0, 0};
 float time = 0.0;
 
 /* call this function after the first timer goes off or was be closed */
@@ -155,7 +155,7 @@ stop_multitimer(AorB, seqnum)
 int AorB, seqnum;
 {
 	/* bound check */
-	if (timers_running[AorB] == 0 && seqnum != timers_seq[AorB]) {
+	if (timers_running[AorB] == 0) {
 		printf("Warning: you are trying to stop a timer isn't running.\n");
 		return;
 	}
@@ -176,9 +176,9 @@ int AorB, seqnum;
 /* queue:
  * when message is out of the sender's window, put the messge in queue
  */
-int queue_head[NODE] = {0, 0};
-int queue_tail[NODE] = {0, 0};
-struct msg queue_buffer[NODE][MAX_BUF];
+int queue_head[POINT] = {0, 0};
+int queue_tail[POINT] = {0, 0};
+struct msg queue_buffer[POINT][MAX_BUF];
 
 /* check if queue is empty */
 #define empty(AorB) (queue_head[AorB] == queue_tail[AorB])
@@ -238,10 +238,7 @@ struct pkt packet;
 {
 	/*	if (DEBUG)
 		print_packet("Recieved", packet);*/
-	if (expect_recv[AorB] == packet.seqnum) {
-		/* if packet is conrrupted, do nothing */
-		if (compute_check_sum(packet))
-			return;
+	if (compute_check_sum(packet) == 0 && expect_recv[AorB] == packet.seqnum) {
 		/* pass data to layer3 */
 		struct msg message;
 		memcpy(message.data, packet.payload, sizeof(packet.payload));
