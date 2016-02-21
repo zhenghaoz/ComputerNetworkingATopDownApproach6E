@@ -14,7 +14,7 @@
      (although some can be lost).
 **********************************************************************/
 
-#define BIDIRECTIONAL 0    /* change to 1 if you're doing extra credit */
+#define BIDIRECTIONAL 1    /* change to 1 if you're doing extra credit */
 /* and write a routine called B_output */
 
 /* a "msg" is the data unit passed from layer 5 (teachers code) to layer  */
@@ -43,6 +43,7 @@ struct pkt {
 #define MAX_BUF 50
 #define TIME_OUT 16.0
 #define INC(a) ((a+1)%MAX_WINDOW)
+#define DEC(a) ((a+MAX_WINDOW-1)%MAX_WINDOW)
 
 int expect_ack[NODE];
 int expect_send[NODE];
@@ -51,11 +52,12 @@ int expect_recv[NODE];
 struct pkt window_buffer[NODE][MAX_WINDOW];
 
 /* print packet content */
-print_packet(action, packet)
+print_packet(AorB, action, packet)
 char *action;
+int AorB;
 struct pkt packet;
 {
-	printf("%s: ", action);
+	printf("[%d] %s: ", AorB, action);
 	printf("seq = %d ack = %d checksum = %x ", packet.seqnum, packet.acknum, packet.checksum);
 	int i;
 	for (i = 0; i < 20; i++)
@@ -92,6 +94,23 @@ int a, b, c;
 		return 0;
 }
 
+/* construct a packet */
+struct pkt construct_packet(AorB, message)
+int AorB;
+struct msg message;
+{
+	struct pkt packet;	
+	memcpy(packet.payload, message.data, sizeof(message.data));
+	packet.seqnum = expect_send[AorB];
+	packet.acknum = DEC(expect_recv[AorB]);
+	packet.checksum = 0;
+	packet.checksum = compute_check_sum(packet); 
+	window_buffer[AorB][expect_send[AorB]] = packet;
+	expect_send[AorB] = INC(expect_send[AorB]);
+	packet_in_buffer[AorB]++;
+	return packet;
+}
+
 
 /* multitimer: 
  * start a timer for each packet using one timer 
@@ -123,7 +142,7 @@ int AorB, seqnum;
 	if (timers_running[AorB] == 0) {	/* if timers isn't running, start the timer right now */
 		timers_running[AorB] = 1;
 		timers_seq[AorB] = seqnum;
-		starttimer(0, TIME_OUT);
+		starttimer(AorB, TIME_OUT);
 	} else {					/* else, add this timer into the queue */
 		timers_expire[AorB][timers_tail[AorB]] = time + TIME_OUT;
 		timers_seqs[AorB][timers_tail[AorB]] = seqnum;
@@ -141,7 +160,7 @@ int AorB, seqnum;
 		return;
 	}
 	/* stop the first timer */
-	stoptimer(0);
+	stoptimer(AorB);
 	timers_running[AorB] = 0;
 	/* if there is more timer, run it right now */
 	if (timers_head[AorB] != timers_tail[AorB]) {
@@ -149,7 +168,7 @@ int AorB, seqnum;
 		float increment = timers_expire[AorB][timers_head[AorB]] - time;
 		timers_seq[AorB] = timers_seqs[AorB][timers_head[AorB]];
 		timers_head[AorB] = INC(timers_head[AorB]);
-		starttimer(0, increment);
+		starttimer(AorB, increment);
 	}
 }
 
@@ -170,7 +189,7 @@ int AorB;
 struct msg message;
 {
 	/* bound check */
-	if (queue_head == queue_tail+1) {
+	if (queue_head[AorB] == queue_tail[AorB] + 1) {
 		printf("Warning: there is no avaliable space in queue.\n");
 		return;
 	}
@@ -194,90 +213,121 @@ int AorB;
 
 
 /* called from layer 5, passed the data to be sent to other side */
-A_output(message)
+output(AorB, message)
+int AorB;
 struct msg message;
 {
 	/* check if msg is in the window */
-	if (packet_in_buffer[0] < MAX_WINDOW) {
+	if (packet_in_buffer[AorB] < MAX_WINDOW) {
 		/* construct a packet */
-		struct pkt packet;
-		memcpy(packet.payload, message.data, sizeof(message.data));
-		packet.seqnum = expect_send[0];
-		packet.checksum = 0;
-		packet.checksum = compute_check_sum(packet); 
-		window_buffer[0][expect_send[0]] = packet;
-		expect_send[0] = INC(expect_send[0]);
-		packet_in_buffer[0]++;
-		tolayer3(0, packet);  
-		start_multitimer(0, packet.seqnum);
+		struct pkt packet = construct_packet(AorB, message);
+		tolayer3(AorB, packet);  
+		start_multitimer(AorB, packet.seqnum);
 		/* debug output */
 		if (DEBUG)
-			print_packet("Send", packet);
+			print_packet(AorB, "Send", packet);
 	} else {
-		push(0, message);
+		push(AorB, message);
 	}
+}
+
+/* called from layer 3, when a packet arrives for layer 4 */
+input(AorB, packet)
+int AorB;
+struct pkt packet;
+{
+	/*	if (DEBUG)
+		print_packet("Recieved", packet);*/
+	if (expect_recv[AorB] == packet.seqnum) {
+		/* if packet is conrrupted, do nothing */
+		if (compute_check_sum(packet))
+			return;
+		/* pass data to layer3 */
+		struct msg message;
+		memcpy(message.data, packet.payload, sizeof(packet.payload));
+		tolayer5(AorB, message);
+		expect_recv[AorB] = INC(expect_recv[AorB]);
+		/* release ACKed packet */
+		while (between(expect_ack[AorB], packet.acknum, expect_send[AorB])) {
+/*			if (DEBUG)
+				print_packet(AorB, "Acknowledged", window_buffer[AorB][expect_ack[AorB]]);*/
+			expect_ack[AorB] = INC(expect_ack[AorB]);
+			packet_in_buffer[AorB]--;
+			stop_multitimer(AorB, expect_ack[AorB]);
+		}
+		/* add new packet from queue */
+		while (packet_in_buffer[AorB] < MAX_WINDOW && !empty(AorB)) {
+			struct msg message = pop(AorB);
+			struct pkt packet = construct_packet(AorB, message);
+			tolayer3(AorB, packet);
+			start_multitimer(AorB, packet.seqnum);
+			/* debug output */
+			if (DEBUG)
+				print_packet(AorB, "Send", AorB, packet);
+		}
+		/* debug output */
+		if (DEBUG)
+			print_packet(AorB, "Accepted", packet);
+	}
+}
+
+/* the following routine will be called once (only) before any other */
+initialize(AorB)
+int AorB;
+{
+	packet_in_buffer[AorB] = 0;
+	expect_send[AorB] = 0;
+	expect_ack[AorB] = 0;
+	expect_recv[AorB] = 0;
+}
+
+/* called when A's timer goes off */
+timerinterrupt(AorB)
+int AorB;
+{
+	interrupt_multitimer(AorB);
+	int seqnum;
+	for (seqnum = expect_ack[AorB]; seqnum != expect_send[AorB]; seqnum = INC(seqnum)) {
+		if (seqnum != expect_ack[AorB])
+			stop_multitimer(AorB, seqnum);
+		tolayer3(AorB, window_buffer[AorB][seqnum]);
+		start_multitimer(AorB, seqnum);
+/*		if (DEBUG)
+			print_packet(AorB, "Timeout retransmit", window_buffer[AorB][seqnum]);*/
+	}
+}
+
+/* called from layer 5, passed the data to be sent to other side */
+A_output(message)
+struct msg message;
+{
+	output(0, message);
 }
 
 B_output(message)  /* need be completed only for extra credit */
 struct msg message;
 {
-
+	output(1, message);
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
 A_input(packet)
 struct pkt packet;
 {
-	/* Recieved ACK, remove data in window */
-	while (between(expect_ack[0], packet.acknum, expect_send[0])) {
-		expect_ack[0] = INC(expect_ack[0]);
-		packet_in_buffer[0]--;
-		stop_multitimer(0, expect_ack[0]);
-/*		if (DEBUG)
-			print_packet("Acknowledged", packet);*/
-	}
-	/* add new packet from queue */
-	while (packet_in_buffer[0] < MAX_WINDOW && !empty(0)) {
-		struct msg message = pop(0);
-		struct pkt packet;
-		memcpy(packet.payload, message.data, sizeof(message.data));
-		packet.seqnum = expect_send[0];
-		packet.checksum = 0;
-		packet.checksum = compute_check_sum(packet);
-		window_buffer[0][expect_send[0]] = packet;
-		expect_send[0] = INC(expect_send[0]);
-		packet_in_buffer[0]++;
-		tolayer3(0, packet);
-		start_multitimer(0, packet.seqnum);
-		/* debug output */
-		if (DEBUG)
-			print_packet("Send", packet);
-	}
+	input(0, packet);
 }
 
 /* called when A's timer goes off */
 A_timerinterrupt()
 {
-	interrupt_multitimer(0);
-	int seqnum;
-	for (seqnum = expect_ack[0]; seqnum != expect_send[0]; seqnum = INC(seqnum)) {
-		if (seqnum != expect_ack[0])
-			stop_multitimer(0, seqnum);
-		tolayer3(0, window_buffer[0][seqnum]);
-		start_multitimer(0, seqnum);
-		if (DEBUG)
-			print_packet("Timeout retransmit", window_buffer[0][seqnum]);
-	}
+	timerinterrupt(0);
 }
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
 A_init()
 {
-	packet_in_buffer[0] = 0;
-	expect_send[0] = 0;
-	expect_ack[0] = 0;
-	expect_recv[0] = 0;
+	initialize(0);
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
@@ -286,41 +336,20 @@ A_init()
 B_input(packet)
 struct pkt packet;
 {
-/*	if (DEBUG)
-		print_packet("Recieved", packet);*/
-	if (expect_recv[1] == packet.seqnum) {
-		/* if packet is conrrupted, do nothing */
-		if (compute_check_sum(packet))
-			return;
-		/* pass data to layer3 */
-		struct msg message;
-		memcpy(message.data, packet.payload, sizeof(packet.payload));
-		tolayer5(1, message);
-		expect_recv[1] = INC(expect_recv[1]);
-		/* ACK */
-		struct pkt ackpkt;
-		ackpkt.acknum = packet.seqnum;
-		tolayer3(1, ackpkt);
-		/* debug output */
-		if (DEBUG)
-			print_packet("Accepted", packet);
-	}
+	input(1, packet);
 }
 
 /* called when B's timer goes off */
 B_timerinterrupt()
 {
-
+	timerinterrupt(1);
 }
 
 /* the following rouytine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
 B_init()
 {
-	packet_in_buffer[1] = 0;
-	expect_send[1] = 0;
-	expect_ack[1] = 0;
-	expect_recv[1] = 0;
+	initialize(1);
 }
 
 
