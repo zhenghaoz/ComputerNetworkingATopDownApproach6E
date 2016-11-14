@@ -1,8 +1,8 @@
-# Computer Networking: A Top Down Approach
+# Computer Networking: A Top Down Approach, 6/E
 
 <img width="100pix" src="http://7xsnwb.com2.z0.glb.clouddn.com/kurose-ross.gif">
 
-Part of solutions for labs in *Computer Networking: A Top Down Approach*.
+Part of solutions for labs in *Computer Networking: A Top Down Approach, 6/E*.
 
 ## Note(Simplified Chinsese)
 
