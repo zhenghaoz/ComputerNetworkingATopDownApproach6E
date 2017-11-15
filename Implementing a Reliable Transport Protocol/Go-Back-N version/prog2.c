@@ -239,7 +239,7 @@ struct pkt packet;
 	/*	if (DEBUG)
 		print_packet("Recieved", packet);*/
 	if (compute_check_sum(packet) == 0 && expect_recv[AorB] == packet.seqnum) {
-		/* pass data to layer3 */
+		/* pass data to layer5 */
 		struct msg message;
 		memcpy(message.data, packet.payload, sizeof(packet.payload));
 		tolayer5(AorB, message);
